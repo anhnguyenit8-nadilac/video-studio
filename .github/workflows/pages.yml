@@ -22,10 +22,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assemble site
         run: |
-          mkdir -p _site/samples _site/briefs
+          mkdir -p _site/samples _site/briefs _site/assets/fonts
           cp -r ui/. _site/
           cp -r samples/. _site/samples/
           cp templates/briefs/*.json _site/briefs/
+          cp assets/fonts/*.woff2 _site/assets/fonts/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
