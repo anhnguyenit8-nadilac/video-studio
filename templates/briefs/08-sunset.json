@@ -1,0 +1,46 @@
+{
+  "slug": "08-sunset",
+  "title": "Template Sunset",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "bg": "#EA6113",
+  "fg": "#FFE3B3",
+  "accent": "#FBB931",
+  "palette": [
+    "#EA6113",
+    "#F88F22",
+    "#FBB931",
+    "#FFE3B3"
+  ],
+  "font": {
+    "family": "Be Vietnam Pro",
+    "weights": {
+      "400": "../../assets/fonts/be-vietnam-pro-vietnamese-400-normal.woff2",
+      "700": "../../assets/fonts/be-vietnam-pro-vietnamese-700-normal.woff2",
+      "800": "../../assets/fonts/be-vietnam-pro-vietnamese-800-normal.woff2"
+    }
+  },
+  "scenes": [
+    {
+      "headline": "Sunset",
+      "body": "Bộ màu cho video reel 9:16",
+      "seconds": 3
+    },
+    {
+      "headline": "Tiêu đề chính của bạn",
+      "body": "Thay nội dung trong brief để dùng lại template này",
+      "seconds": 3
+    },
+    {
+      "headline": "Điểm nổi bật số một",
+      "body": "Mỗi scene có thể đổi thời lượng và câu chữ",
+      "seconds": 3
+    },
+    {
+      "headline": "Bắt đầu ngay hôm nay",
+      "body": "Lưu lại và chia sẻ bộ màu này",
+      "seconds": 3
+    }
+  ]
+}

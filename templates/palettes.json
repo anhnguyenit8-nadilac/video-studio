@@ -1,0 +1,12 @@
+[
+  { "id": "01-aegean-sky", "name": "Aegean Sky", "palette": ["#1664B0", "#EFE8DE", "#D21624"], "bg": "#1664B0", "fg": "#EFE8DE", "accent": "#D21624" },
+  { "id": "02-black-violet-lime", "name": "Black Violet Lime", "palette": ["#000000", "#7F3AED", "#C6FF34"], "bg": "#000000", "fg": "#C6FF34", "accent": "#7F3AED" },
+  { "id": "03-orange-green-white", "name": "Orange Green White", "palette": ["#EC5D3D", "#235451", "#FDFBEF"], "bg": "#235451", "fg": "#FDFBEF", "accent": "#EC5D3D" },
+  { "id": "04-color-combo-5", "name": "Color Combo 5", "palette": ["#F8FE06", "#02C57A"], "bg": "#02C57A", "fg": "#F8FE06", "accent": "#F8FE06" },
+  { "id": "05-color-combo-3", "name": "Color Combo 3", "palette": ["#FEABEF", "#121909"], "bg": "#121909", "fg": "#FEABEF", "accent": "#FEABEF" },
+  { "id": "06-marple", "name": "Marple", "palette": ["#CA2851", "#FF6766", "#FFB173", "#FFE3B3"], "bg": "#CA2851", "fg": "#FFE3B3", "accent": "#FFB173" },
+  { "id": "07-violet-dusk", "name": "Violet Dusk", "palette": ["#502D55", "#935073", "#F6DBC0", "#F8F4E9"], "bg": "#502D55", "fg": "#F8F4E9", "accent": "#F6DBC0" },
+  { "id": "08-sunset", "name": "Sunset", "palette": ["#EA6113", "#F88F22", "#FBB931", "#FFE3B3"], "bg": "#EA6113", "fg": "#FFE3B3", "accent": "#FBB931" },
+  { "id": "09-tokyo-night", "name": "Tokyo Night", "palette": ["#130F40", "#5B2A86", "#C724B1", "#FF7EE3"], "bg": "#130F40", "fg": "#FF7EE3", "accent": "#C724B1" },
+  { "id": "10-blush", "name": "Blush", "palette": ["#9D1242", "#C74459", "#FF7C4F", "#FFD08E"], "bg": "#9D1242", "fg": "#FFD08E", "accent": "#FF7C4F" }
+]

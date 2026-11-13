@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trình tạo video từ prompt</title>
+<style>
+  :root { --bg:#0e0e13; --panel:#17171f; --line:#2a2a36; --fg:#f2f2f5; --muted:#9a9aab; --accent:#7c5cff; --accent2:#ff6b3d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.5 Inter, system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:16px; margin:0; }
+  .layout { display:grid; grid-template-columns: minmax(340px, 440px) 1fr; gap:20px; padding:20px; }
+  @media (max-width: 900px) { .layout { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
+  textarea, input, select { width:100%; background:#0b0b10; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px; font:inherit; }
+  textarea { min-height:120px; resize:vertical; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  button { background:#24242f; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 14px; font:inherit; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  .scene { border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; display:grid; gap:8px; }
+  .scene .head { display:flex; justify-content:space-between; color:var(--muted); font-size:12px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  .stage { aspect-ratio:16/9; background:#000; border-radius:12px; overflow:hidden; position:relative; border:1px solid var(--line); }
+  .slide { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; padding:0 9%; opacity:0; transition:opacity .6s, transform .6s; transform:translateY(20px); }
+  .slide.on { opacity:1; transform:none; }
+  .slide .bar { width:12%; height:6px; border-radius:4px; margin-bottom:4%; }
+  .slide h3 { font-size:clamp(20px, 4.2vw, 56px); margin:0; line-height:1.08; font-weight:800; letter-spacing:-.02em; }
+  .slide p { font-size:clamp(12px, 1.7vw, 22px); opacity:.85; margin:2.5% 0 0; }
+  .timeline { display:flex; gap:4px; margin-top:10px; }
+  .timeline div { height:6px; border-radius:3px; background:#2a2a36; }
+  .timeline div.on { background:var(--accent2); }
+  .muted { color:var(--muted); font-size:12px; }
+  pre { background:#0b0b10; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; font-size:12px; max-height:260px; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid var(--line); font-size:11px; color:var(--muted); margin-right:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trình tạo video từ prompt</h1>
+  <span class="muted">Brief JSON → Claude Code (HyperFrames) → MP4</span>
+</header>
+
+<div class="layout">
+  <!-- Cột trái: prompt, scenes, provider -->
+  <div>
+    <div class="card">
+      <h2>1. Prompt</h2>
+      <textarea id="prompt" placeholder="Ví dụ: Giới thiệu sản phẩm X. Nhanh, gọn, 3 điểm nổi bật. Kết thúc bằng lời kêu gọi dùng thử."></textarea>
+      <div class="grid2" style="margin-top:10px">
+        <div><label>Tiêu đề</label><input id="title" value="Video mới" /></div>
+        <div><label>Thời lượng video (phút, 5–10)</label><input id="mins" type="number" min="5" max="10" step="0.5" value="7" /></div>
+        <div><label>Màu nền</label><input id="bg" type="color" value="#0f0f14" /></div>
+        <div><label>Màu nhấn</label><input id="accent" type="color" value="#ff6b3d" /></div>
+      </div>
+      <div class="row"><button class="primary" id="gen">Tạo kịch bản scene</button></div>
+      <p class="muted" id="warn" style="color:#ff8a65"></p>
+    </div>
+
+    <div class="card">
+      <h2>2. Scenes</h2>
+      <div id="scenes"><p class="muted">Chưa có scene. Nhập prompt rồi bấm "Tạo kịch bản scene".</p></div>
+      <div class="row"><button id="addScene">+ Thêm scene</button></div>
+    </div>
+
+    <div class="card">
+      <h2>3. Giọng nói & âm thanh (provider)</h2>
+      <p class="muted">Provider được đăng ký qua <code>window.VideoProviders.register(...)</code>. Thêm AI mới chỉ cần đăng ký thêm provider — không cần sửa phần còn lại.</p>
+      <div id="providers"></div>
+    </div>
+  </div>
+
+  <!-- Cột phải: preview + xuất -->
+  <div>
+    <div class="card">
+      <h2>Xem trước</h2>
+      <div class="stage" id="stage"><p class="muted" style="padding:20px">Chưa có scene để xem trước.</p></div>
+      <div class="timeline" id="tl"></div>
+      <div class="row">
+        <button id="play" disabled>▶ Phát thử</button>
+        <span class="muted" id="dur"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Xuất brief</h2>
+      <div class="row">
+        <button class="primary" id="dl" disabled>Sao chép brief JSON</button>
+        <button id="copy" disabled>Sao chép lệnh chạy</button>
+      </div>
+      <p class="muted">Dán brief JSON vào <code>briefs/&lt;ten&gt;.json</code> trong project, rồi trong Claude Code chạy:</p>
+      <pre id="cmd">pipeline/render.sh briefs/&lt;ten-file&gt;.json</pre>
+      <pre id="json"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Registry provider (mở rộng cho AI giọng / âm thanh sau này) ----------
+const VideoProviders = (() => {
+  const reg = new Map();
+  return {
+    register(p) {
+      if (!p || !p.id || !["voice", "audio"].includes(p.kind)) throw new Error("Provider cần id và kind voice|audio");
+      reg.set(`${p.kind}:${p.id}`, p);
+      if (window.__renderProviders) window.__renderProviders();
+    },
+    list(kind) { return [...reg.values()].filter(p => !kind || p.kind === kind); },
+    get(kind, id) { return reg.get(`${kind}:${id}`); }
+  };
+})();
+window.VideoProviders = VideoProviders;
+
+// Provider mặc định
+VideoProviders.register({ id: "none", kind: "voice", label: "Không có giọng", fields: [] });
+// (none + audio ở dưới — registry khóa theo kind:id nên hai "none" không xung đột)
+VideoProviders.register({ id: "none", kind: "audio", label: "Không có âm thanh", fields: [] });
+VideoProviders.register({
+  id: "file", kind: "audio", label: "File audio có sẵn",
+  fields: [{ key: "src", label: "Đường dẫn file (trong project, ví dụ audio/nhac.mp3)", type: "text" }]
+});
+// Ví dụ mẫu khi thêm AI (để trống, không gọi API):
+// VideoProviders.register({ id: "my-tts", kind: "voice", label: "Giọng AI X", fields: [{key:"voice", label:"Tên giọng", type:"text"}] });
+
+// ---------- Giới hạn thời lượng ----------
+const MIN_SEC = 300;   // 5 phút
+const MAX_SEC = 600;   // 10 phút
+const MIN_SCENE = 3;   // giây, tối thiểu cho một scene
+const MAX_SCENE = 30;  // giây, tối đa cho một scene
+
+function targetSeconds() {
+  const m = Math.min(10, Math.max(5, Number($("mins").value) || 7));
+  return Math.round(m * 60);
+}
+
+// ---------- State ----------
+let scenes = [];
+let playing = null;
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// Tách prompt thành scene: mỗi câu một scene, headline là đầu câu, body là phần còn lại
+function splitPrompt(text) {
+  const parts = text.split(/\n+|(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const per = targetSeconds() / Math.max(parts.length, 1);
+  return parts.map(p => {
+    const words = p.split(/\s+/);
+    const headline = words.slice(0, 7).join(" ");
+    const body = words.length > 7 ? words.slice(7).join(" ") : "";
+    return newScene({ headline, body, seconds: Math.round(per * 10) / 10 });
+  });
+}
+
+// Cảnh báo nếu tổng thời lượng hoặc từng scene nằm ngoài giới hạn
+function durationWarning() {
+  if (!scenes.length) return "";
+  const total = scenes.reduce((a, s) => a + (Number(s.seconds) || 0), 0);
+  const bad = scenes.find(s => Number(s.seconds) < MIN_SCENE || Number(s.seconds) > MAX_SCENE);
+  if (bad) return `Mỗi scene cần từ ${MIN_SCENE} đến ${MAX_SCENE} giây. Hãy gộp hoặc bớt scene.`;
+  if (total < MIN_SEC || total > MAX_SEC) return `Tổng thời lượng hiện là ${(total / 60).toFixed(1)} phút. Video phải từ 5 đến 10 phút.`;
+  return "";
+}
+
+function newScene(o = {}) {
+  return { headline: o.headline ?? "Tiêu đề scene", body: o.body ?? "", seconds: o.seconds ?? 10,
+    voice: o.voice ?? { provider: "none" }, audio: o.audio ?? { provider: "none" } };
+}
+
+function providerSelect(kind, current, onChange) {
+  const sel = document.createElement("select");
+  for (const p of VideoProviders.list(kind)) {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.label || p.id;
+    if (p.id === current) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => onChange(sel.value);
+  return sel;
+}
+
+function renderScenes() {
+  const box = $("scenes");
+  box.innerHTML = "";
+  if (!scenes.length) box.innerHTML = '<p class="muted">Chưa có scene.</p>';
+  scenes.forEach((s, i) => {
+    const el = document.createElement("div");
+    el.className = "scene";
+    el.innerHTML = `
+      <div class="head"><span>Scene ${i + 1}</span>
+        <span><button data-up="${i}">↑</button> <button data-down="${i}">↓</button> <button data-del="${i}">✕</button></span></div>
+      <div><label>Tiêu đề</label><input data-f="headline" data-i="${i}" value="${esc(s.headline)}" /></div>
+      <div><label>Nội dung phụ</label><input data-f="body" data-i="${i}" value="${esc(s.body)}" /></div>
+      <div class="grid2">
+        <div><label>Thời lượng (giây)</label><input type="number" min="2" max="12" data-f="seconds" data-i="${i}" value="${s.seconds}" /></div>
+        <div><label>Giọng (voice)</label><div data-slot="voice"></div></div>
+      </div>
+      <div class="grid2">
+        <div><label>Âm thanh (audio)</label><div data-slot="audio"></div></div>
+        <div></div>
+      </div>`;
+    el.querySelector('[data-slot="voice"]').appendChild(providerSelect("voice", s.voice.provider, v => { s.voice = { ...s.voice, provider: v }; refresh(); }));
+    el.querySelector('[data-slot="audio"]').appendChild(providerSelect("audio", s.audio.provider, v => { s.audio = { ...s.audio, provider: v }; refresh(); }));
+    box.appendChild(el);
+  });
+  box.querySelectorAll("input[data-f]").forEach(inp => inp.oninput = () => {
+    const s = scenes[+inp.dataset.i];
+    s[inp.dataset.f] = inp.dataset.f === "seconds" ? Number(inp.value) : inp.value;
+    refresh(false);
+  });
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { scenes.splice(+b.dataset.del, 1); refresh(); });
+  box.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(+b.dataset.up, -1));
+  box.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(+b.dataset.down, 1));
+}
+
+function move(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= scenes.length) return;
+  [scenes[i], scenes[j]] = [scenes[j], scenes[i]];
+  refresh();
+}
+
+function renderProviders() {
+  const box = $("providers");
+  box.innerHTML = "";
+  for (const p of VideoProviders.list()) {
+    const row = document.createElement("div");
+    row.className = "muted";
+    row.style.marginBottom = "6px";
+    row.innerHTML = `<span class="pill">${p.kind}</span> ${esc(p.label || p.id)} <code>${esc(p.id)}</code>`;
+    box.appendChild(row);
+  }
+}
+window.__renderProviders = () => { renderProviders(); renderScenes(); };
+
+function buildBrief() {
+  const slug = ($("title").value || "video").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "video";
+  return {
+    slug, title: $("title").value, bg: $("bg").value, accent: $("accent").value,
+    durationRange: { min: MIN_SEC, max: MAX_SEC },
+    scenes: scenes.map(s => {
+      const o = { headline: s.headline, body: s.body || undefined, seconds: Number(s.seconds) || 4 };
+      if (s.voice?.provider && s.voice.provider !== "none") o.voice = { provider: s.voice.provider, text: s.body || s.headline };
+      if (s.audio?.provider && s.audio.provider !== "none") o.audio = { provider: s.audio.provider, ...(s.audio.src ? { src: s.audio.src } : {}) };
+      return o;
+    })
+  };
+}
+
+// ---------- Preview ----------
+let stopTimer = null;
+function renderStage(active = 0) {
+  const stage = $("stage");
+  if (!scenes.length) { stage.innerHTML = '<p class="muted" style="padding:20px">Chưa có scene để xem trước.</p>'; return; }
+  stage.style.background = $("bg").value;
+  stage.innerHTML = scenes.map((s, i) => `
+    <div class="slide ${i === active ? "on" : ""}" style="color:#f5f5f7">
+      <div class="bar" style="background:${$("accent").value}"></div>
+      <h3>${esc(s.headline)}</h3>
+      ${s.body ? `<p>${esc(s.body)}</p>` : ""}
+    </div>`).join("");
+  $("tl").innerHTML = scenes.map((s, i) => `<div class="${i === active ? "on" : ""}" style="flex:${s.seconds}"></div>`).join("");
+}
+
+function play() {
+  if (playing) { clearTimeout(playing); playing = null; $("play").textContent = "▶ Phát thử"; return; }
+  let i = 0;
+  $("play").textContent = "■ Dừng";
+  const step = () => {
+    renderStage(i);
+    const ms = (Number(scenes[i].seconds) || 4) * 1000;
+    i++;
+    if (i < scenes.length) playing = setTimeout(step, ms);
+    else playing = setTimeout(() => { playing = null; $("play").textContent = "▶ Phát thử"; renderStage(0); }, ms);
+  };
+  step();
+}
+
+function refresh(full = true) {
+  if (full) renderScenes();
+  renderStage(0);
+  const total = scenes.reduce((a, s) => a + (Number(s.seconds) || 0), 0);
+  $("dur").textContent = scenes.length ? `${scenes.length} scene · ${total}s` : "";
+  const warn = durationWarning();
+  $("warn").textContent = warn;
+  const ok = scenes.length > 0 && !warn;
+  $("play").disabled = !scenes.length;
+  $("dl").disabled = !ok;
+  $("copy").disabled = !ok;
+  const brief = buildBrief();
+  $("json").textContent = scenes.length ? JSON.stringify(brief, null, 2) : "";
+  $("cmd").textContent = `pipeline/render.sh briefs/${brief.slug}.json`;
+}
+
+// ---------- Events ----------
+$("gen").onclick = () => {
+  const text = $("prompt").value.trim();
+  if (!text) return;
+  scenes = splitPrompt(text);
+  refresh();
+};
+$("addScene").onclick = () => { scenes.push(newScene({ headline: "Scene mới" })); refresh(); };
+$("play").onclick = play;
+["title", "bg", "accent"].forEach(id => $(id).oninput = () => refresh(false));
+$("mins").onchange = () => {
+  if (!scenes.length) return;
+  const per = targetSeconds() / scenes.length;
+  scenes.forEach(s => s.seconds = Math.round(per * 10) / 10);
+  refresh();
+};
+$("dl").onclick = async () => {
+  try { await navigator.clipboard.writeText(JSON.stringify(buildBrief(), null, 2)); $("dl").textContent = "Đã sao chép ✓"; setTimeout(() => $("dl").textContent = "Sao chép brief JSON", 1500); } catch (e) {}
+};
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("cmd").textContent); $("copy").textContent = "Đã sao chép ✓"; setTimeout(() => $("copy").textContent = "Sao chép lệnh chạy", 1500); } catch (e) {}
+};
+
+renderProviders();
+refresh();
+</script>
+</body>
+</html>

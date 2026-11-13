@@ -1,0 +1,10 @@
+{
+  "slug": "demo-gioi-thieu",
+  "title": "Giới thiệu HyperFrames",
+  "accent": "#ff6b3d",
+  "scenes": [
+    { "headline": "Viết HTML. Ra video.", "body": "Mỗi khung hình là một hàm của thời gian.", "seconds": 4 },
+    { "headline": "Tạo video từ prompt", "body": "Mô tả ý tưởng, UI sinh brief tự động.", "seconds": 4 },
+    { "headline": "Sẵn sàng cho giọng AI", "body": "Gắn provider giọng hoặc âm thanh khi cần.", "seconds": 4, "voice": { "provider": "none" } }
+  ]
+}

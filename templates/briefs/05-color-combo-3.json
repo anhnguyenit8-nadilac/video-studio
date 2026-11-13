@@ -1,0 +1,44 @@
+{
+  "slug": "05-color-combo-3",
+  "title": "Template Color Combo 3",
+  "width": 1080,
+  "height": 1920,
+  "fps": 30,
+  "bg": "#121909",
+  "fg": "#FEABEF",
+  "accent": "#FEABEF",
+  "palette": [
+    "#FEABEF",
+    "#121909"
+  ],
+  "font": {
+    "family": "Be Vietnam Pro",
+    "weights": {
+      "400": "../../assets/fonts/be-vietnam-pro-vietnamese-400-normal.woff2",
+      "700": "../../assets/fonts/be-vietnam-pro-vietnamese-700-normal.woff2",
+      "800": "../../assets/fonts/be-vietnam-pro-vietnamese-800-normal.woff2"
+    }
+  },
+  "scenes": [
+    {
+      "headline": "Color Combo 3",
+      "body": "Bộ màu cho video reel 9:16",
+      "seconds": 3
+    },
+    {
+      "headline": "Tiêu đề chính của bạn",
+      "body": "Thay nội dung trong brief để dùng lại template này",
+      "seconds": 3
+    },
+    {
+      "headline": "Điểm nổi bật số một",
+      "body": "Mỗi scene có thể đổi thời lượng và câu chữ",
+      "seconds": 3
+    },
+    {
+      "headline": "Bắt đầu ngay hôm nay",
+      "body": "Lưu lại và chia sẻ bộ màu này",
+      "seconds": 3
+    }
+  ]
+}
