@@ -1,4 +1,5 @@
-# Staging: đưa thư mục ui/ (trình tạo video) lên GitHub Pages mỗi lần push nhánh main.
+# Staging: ghép _site từ ui/ (trình tạo), samples/ (video mẫu) và templates/briefs/ (brief xuất),
+# rồi đưa lên GitHub Pages mỗi lần push nhánh main.
 name: staging-pages
 on:
   push:
@@ -19,9 +20,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site/samples _site/briefs
+          cp -r ui/. _site/
+          cp -r samples/. _site/samples/
+          cp templates/briefs/*.json _site/briefs/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: ui
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
