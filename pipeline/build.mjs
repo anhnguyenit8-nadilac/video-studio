@@ -48,12 +48,12 @@ const scenes = brief.scenes.map((s, i) => {
   cursor += seconds;
   return scene;
 });
-const total = cursor;
+const total = Math.round(cursor * 1000) / 1000;
 
 // Giới hạn thời lượng (nếu brief khai báo durationRange, ví dụ video prompt 5–10 phút)
 if (brief.durationRange) {
   const { min, max } = brief.durationRange;
-  if (total < min || total > max) {
+  if (total < min - 0.001 || total > max + 0.001) {
     throw new Error(`Tổng thời lượng ${total}s nằm ngoài khoảng ${min}–${max}s`);
   }
   const bad = scenes.find((s) => s.duration < 3 || s.duration > 30);

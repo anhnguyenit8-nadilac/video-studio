@@ -56,7 +56,7 @@
         <div><label>Màu nền</label><input id="bg" type="color" value="#0f0f14" /></div>
         <div><label>Màu nhấn</label><input id="accent" type="color" value="#ff6b3d" /></div>
       </div>
-      <div class="row"><button class="primary" id="gen">Tạo kịch bản scene</button></div>
+      <div class="row"><button class="primary" id="gen">Tạo kịch bản scene</button><button id="aiGen" hidden>✨ Tạo nội dung bằng Claude</button></div>
       <p class="muted" id="warn" style="color:#ff8a65"></p>
     </div>
 
@@ -163,13 +163,13 @@ function splitPrompt(text) {
 // Cảnh báo nếu tổng thời lượng hoặc từng scene nằm ngoài giới hạn
 function durationWarning() {
   if (!scenes.length) return "";
-  const total = scenes.reduce((a, s) => a + (Number(s.seconds) || 0), 0);
+  const total = Math.round(scenes.reduce((a, s) => a + (Number(s.seconds) || 0), 0) * 1000) / 1000;
   const longIdx = scenes.findIndex(s => Number(s.seconds) > MAX_SCENE);
   if (longIdx >= 0) return `Scene ${longIdx + 1} dài quá ${MAX_SCENE} giây. Hãy bấm "+ Thêm scene" để chia nhỏ nội dung.`;
   const shortIdx = scenes.findIndex(s => Number(s.seconds) < MIN_SCENE);
   if (shortIdx >= 0) return `Scene ${shortIdx + 1} ngắn quá ${MIN_SCENE} giây. Hãy gộp với scene khác hoặc xóa bớt.`;
-  if (total < MIN_SEC) return `Video hiện ${(total / 60).toFixed(1)} phút, chưa đủ 5 phút. Hãy thêm scene.`;
-  if (total > MAX_SEC) return `Video hiện ${(total / 60).toFixed(1)} phút, vượt 10 phút. Hãy xóa bớt scene.`;
+  if (total < MIN_SEC - 0.001) return `Video hiện ${(total / 60).toFixed(1)} phút, chưa đủ 5 phút. Hãy thêm scene.`;
+  if (total > MAX_SEC + 0.001) return `Video hiện ${(total / 60).toFixed(1)} phút, vượt 10 phút. Hãy xóa bớt scene.`;
   return "";
 }
 
@@ -304,6 +304,88 @@ function refresh(full = true) {
   $("json").textContent = scenes.length ? JSON.stringify(brief, null, 2) : "";
   $("cmd").textContent = `pipeline/render.sh briefs/${brief.slug}.json`;
 }
+
+// ---------- Claude tạo nội dung (capability "sample", chỉ có trong Artifact) ----------
+let sampleFn = null;
+(async () => {
+  try {
+    const s = await window.claude?.use?.("sample");
+    if (s) { sampleFn = s; $("aiGen").hidden = false; }
+  } catch (e) {}
+})();
+
+function parseScenesJson(raw) {
+  const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+  if (start < 0 || end < 0) throw new Error("Claude không trả về JSON");
+  const data = JSON.parse(raw.slice(start, end + 1));
+  if (!Array.isArray(data.scenes) || !data.scenes.length) throw new Error("Thiếu danh sách scenes");
+  return data.scenes.map(x => ({
+    headline: String(x.headline ?? "").trim() || "Tiêu đề",
+    body: String(x.body ?? "").trim(),
+    seconds: Math.min(MAX_SCENE, Math.max(MIN_SCENE, Number(x.seconds) || MIN_SCENE)),
+  }));
+}
+
+// Chia lại thời gian để tổng đúng thời lượng đã chọn, mỗi scene vẫn trong giới hạn
+function fitToTarget(list, T) {
+  // Thiếu scene thì thêm scene đệm để đủ thời lượng (mỗi scene tối đa MAX_SCENE giây)
+  const need = Math.ceil(T / MAX_SCENE);
+  const out = list.slice();
+  while (out.length < need) {
+    out.push({ headline: `Phần ${out.length + 1}`, body: "Chỉnh sửa nội dung cho phần này", seconds: MIN_SCENE });
+  }
+  // Phân bổ theo tỷ lệ Claude đề xuất
+  const sum0 = out.reduce((a, s) => a + s.seconds, 0);
+  const secs = out.map(s => (s.seconds / sum0) * T);
+  // Kẹp và phân bổ lại phần dư cho đến khi tổng khớp T
+  for (let iter = 0; iter < 20; iter++) {
+    for (let i = 0; i < secs.length; i++) secs[i] = Math.min(MAX_SCENE, Math.max(MIN_SCENE, secs[i]));
+    const diff = T - secs.reduce((a, b) => a + b, 0);
+    if (Math.abs(diff) < 0.05) break;
+    const room = secs.map((v, i) => (diff > 0 ? v < MAX_SCENE : v > MIN_SCENE) ? i : -1).filter(i => i >= 0);
+    if (!room.length) break;
+    room.forEach(i => secs[i] += diff / room.length);
+  }
+  // Đổi sang đơn vị 0.1 giây nguyên để tổng khớp chính xác (không sai số thập phân)
+  const minT = Math.round(MIN_SCENE * 10), maxT = Math.round(MAX_SCENE * 10);
+  const tenths = secs.map(v => Math.min(maxT, Math.max(minT, Math.floor(v * 10))));
+  let rem = Math.round(T * 10) - tenths.reduce((a, b) => a + b, 0);
+  for (let i = 0; rem > 0 && i < tenths.length * 400; i++) {
+    const k = i % tenths.length;
+    if (tenths[k] < maxT) { tenths[k]++; rem--; }
+  }
+  return out.map((s, i) => ({ ...s, seconds: tenths[i] / 10 }));
+}
+
+$("aiGen").onclick = async () => {
+  const text = $("prompt").value.trim();
+  if (!text || !sampleFn) return;
+  const T = targetSeconds();
+  const ask = [
+    "Bạn là biên kịch video dọc (9:16) cho reel. Từ ý tưởng dưới đây, viết kịch bản gồm các scene.",
+    `Yêu cầu: tổng thời lượng các scene phải xấp xỉ ${T} giây; mỗi scene từ ${MIN_SCENE} đến ${MAX_SCENE} giây.`,
+    "headline tối đa 8 từ, body tối đa 20 từ. Giữ ngôn ngữ của ý tưởng gốc.",
+    'Chỉ trả về một JSON duy nhất, dạng: {"scenes":[{"headline":"...","body":"...","seconds":4}]}. Không thêm lời giải thích.',
+    "",
+    "Ý tưởng:",
+    text,
+  ].join("\n");
+  $("aiGen").disabled = true;
+  $("warn").textContent = "Claude đang viết kịch bản…";
+  try {
+    const res = await sampleFn(ask, { modelTier: "default", cache: false });
+    const list = fitToTarget(parseScenesJson(res.text), T);
+    scenes = list.map(s => newScene(s));
+    $("warn").textContent = "";
+    refresh();
+  } catch (e) {
+    if (e?.code === "not_granted") { $("aiGen").hidden = true; sampleFn = null; $("warn").textContent = "Chưa được cấp quyền dùng Claude."; }
+    else if (e?.code === "rate_limited") $("warn").textContent = "Đang quá giới hạn yêu cầu. Thử lại sau ít phút.";
+    else $("warn").textContent = "Không tạo được kịch bản: " + (e?.message ?? e);
+  } finally {
+    $("aiGen").disabled = false;
+  }
+};
 
 // ---------- Events ----------
 $("gen").onclick = () => {
