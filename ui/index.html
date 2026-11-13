@@ -173,6 +173,93 @@ function durationWarning() {
   return "";
 }
 
+function newScene(o = {}) {
+  return { headline: o.headline ?? "Tiêu đề scene", body: o.body ?? "", seconds: o.seconds ?? 10,
+    voice: o.voice ?? { provider: "none" }, audio: o.audio ?? { provider: "none" } };
+}
+
+function providerSelect(kind, current, onChange) {
+  const sel = document.createElement("select");
+  for (const p of VideoProviders.list(kind)) {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.label || p.id;
+    if (p.id === current) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.onchange = () => onChange(sel.value);
+  return sel;
+}
+
+function renderScenes() {
+  const box = $("scenes");
+  box.innerHTML = "";
+  if (!scenes.length) box.innerHTML = '<p class="muted">Chưa có scene.</p>';
+  scenes.forEach((s, i) => {
+    const el = document.createElement("div");
+    el.className = "scene";
+    el.innerHTML = `
+      <div class="head"><span>Scene ${i + 1}</span>
+        <span><button data-up="${i}">↑</button> <button data-down="${i}">↓</button> <button data-del="${i}">✕</button></span></div>
+      <div><label>Tiêu đề</label><input data-f="headline" data-i="${i}" value="${esc(s.headline)}" /></div>
+      <div><label>Nội dung phụ</label><input data-f="body" data-i="${i}" value="${esc(s.body)}" /></div>
+      <div class="grid2">
+        <div><label>Thời lượng (giây)</label><input type="number" min="2" max="12" data-f="seconds" data-i="${i}" value="${s.seconds}" /></div>
+        <div><label>Giọng (voice)</label><div data-slot="voice"></div></div>
+      </div>
+      <div class="grid2">
+        <div><label>Âm thanh (audio)</label><div data-slot="audio"></div></div>
+        <div></div>
+      </div>`;
+    el.querySelector('[data-slot="voice"]').appendChild(providerSelect("voice", s.voice.provider, v => { s.voice = { ...s.voice, provider: v }; refresh(); }));
+    el.querySelector('[data-slot="audio"]').appendChild(providerSelect("audio", s.audio.provider, v => { s.audio = { ...s.audio, provider: v }; refresh(); }));
+    box.appendChild(el);
+  });
+  box.querySelectorAll("input[data-f]").forEach(inp => inp.oninput = () => {
+    const s = scenes[+inp.dataset.i];
+    s[inp.dataset.f] = inp.dataset.f === "seconds" ? Number(inp.value) : inp.value;
+    refresh(false);
+  });
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = () => { scenes.splice(+b.dataset.del, 1); refresh(); });
+  box.querySelectorAll("[data-up]").forEach(b => b.onclick = () => move(+b.dataset.up, -1));
+  box.querySelectorAll("[data-down]").forEach(b => b.onclick = () => move(+b.dataset.down, 1));
+}
+
+function move(i, d) {
+  const j = i + d;
+  if (j < 0 || j >= scenes.length) return;
+  [scenes[i], scenes[j]] = [scenes[j], scenes[i]];
+  refresh();
+}
+
+function renderProviders() {
+  const box = $("providers");
+  box.innerHTML = "";
+  for (const p of VideoProviders.list()) {
+    const row = document.createElement("div");
+    row.className = "muted";
+    row.style.marginBottom = "6px";
+    row.innerHTML = `<span class="pill">${p.kind}</span> ${esc(p.label || p.id)} <code>${esc(p.id)}</code>`;
+    box.appendChild(row);
+  }
+}
+window.__renderProviders = () => { renderProviders(); renderScenes(); };
+
+function buildBrief() {
+  const slug = ($("title").value || "video").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "video";
+  return {
+    slug, title: $("title").value, bg: $("bg").value, accent: $("accent").value,
+    durationRange: { min: MIN_SEC, max: MAX_SEC },
+    scenes: scenes.map(s => {
+      const o = { headline: s.headline, body: s.body || undefined, seconds: Number(s.seconds) || 4 };
+      if (s.voice?.provider && s.voice.provider !== "none") o.voice = { provider: s.voice.provider, text: s.body || s.headline };
+      if (s.audio?.provider && s.audio.provider !== "none") o.audio = { provider: s.audio.provider, ...(s.audio.src ? { src: s.audio.src } : {}) };
+      return o;
+    })
+  };
+}
+
 // ---------- Preview ----------
 let stopTimer = null;
 function renderStage(active = 0) {
