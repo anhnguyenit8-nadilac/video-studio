@@ -1,0 +1,72 @@
+# Render miễn phí: mở issue có nhãn "render" và nội dung chứa khối ```json (brief) -> MP4 được commit vào renders/ rồi comment link.
+# Chỉ chủ repo (OWNER) mới kích hoạt được để tránh người lạ dùng tài nguyên render.
+name: render-video
+on:
+  issues:
+    types: [opened]
+permissions:
+  contents: write
+  issues: write
+jobs:
+  render:
+    if: github.event.issue.author_association == 'OWNER' && contains(github.event.issue.labels.*.name, 'render')
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_BODY: ${{ github.event.issue.body }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tách brief từ issue
+        id: parse
+        run: |
+          python3 - <<'PY'
+          import os, re, json, pathlib
+          body = os.environ["ISSUE_BODY"]
+          m = re.search(r"```json\s*(.*?)```", body, re.S)
+          if not m:
+              raise SystemExit("Không tìm thấy khối ```json trong issue")
+          brief = json.loads(m.group(1))
+          slug = re.sub(r"[^a-z0-9-]+", "-", str(brief.get("slug", "video")).lower()).strip("-") or "video"
+          brief["slug"] = slug
+          p = pathlib.Path("briefs/issue") / f"{slug}.json"
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_text(json.dumps(brief, ensure_ascii=False, indent=2), encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"slug={slug}\n")
+          PY
+
+      - name: Cài Chrome
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+          echo "HYPERFRAMES_BROWSER_PATH=$(which google-chrome || which chromium-browser || which chromium)" >> "$GITHUB_ENV"
+
+      - name: Build, check và render MP4
+        run: |
+          SLUG="${{ steps.parse.outputs.slug }}"
+          ./pipeline/render.sh "briefs/issue/${SLUG}.json" "out/issue/${SLUG}"
+          test -f "out/issue/${SLUG}.mp4"
+
+      - name: Commit MP4 và comment link
+        env:
+          SLUG: ${{ steps.parse.outputs.slug }}
+        run: |
+          mkdir -p renders
+          cp "out/issue/${SLUG}.mp4" "renders/${SLUG}.mp4"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add renders "briefs/issue/${SLUG}.json"
+          git commit -m "Render ${SLUG} (issue #${ISSUE_NUMBER})"
+          git push origin HEAD:main
+          URL="https://github.com/${{ github.repository }}/raw/main/renders/${SLUG}.mp4"
+          gh issue comment "$ISSUE_NUMBER" --body "Video đã xong: ${URL}"
+          gh issue close "$ISSUE_NUMBER"

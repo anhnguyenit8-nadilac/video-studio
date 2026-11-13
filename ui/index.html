@@ -19,151 +19,214 @@
   @media (max-width:600px) { .grid2 { grid-template-columns:1fr; } }
   label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
   .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; align-items:center; }
-  button { background:#24242f; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px 16px; font:inherit; cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); }
+  button, .btn { background:#24242f; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:10px 16px; font:inherit; cursor:pointer; text-decoration:none; display:inline-block; }
+  button.primary, .btn.primary { background:var(--accent); border-color:var(--accent); }
   button:disabled { opacity:.5; cursor:default; }
   .muted { color:var(--muted); font-size:12px; }
   .msg { color:var(--warn); min-height:20px; margin-top:10px; }
-  .log { background:#0b0b10; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; max-height:220px; overflow:auto; margin-top:10px; }
+  pre { background:#0b0b10; border:1px solid var(--line); border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; max-height:260px; overflow:auto; }
   a { color:#b9a8ff; }
 </style>
 </head>
 <body>
 <header>
   <h1>Trình tạo video từ prompt</h1>
-  <span class="muted">Prompt → HyperFrames → MP4</span>
+  <span class="muted">Prompt → kịch bản tự động → MP4</span>
 </header>
 
 <div class="wrap">
   <div class="card">
     <h2>1. Prompt</h2>
     <label for="prompt">Mô tả video bạn muốn</label>
-    <textarea id="prompt" placeholder="Ví dụ: Video giới thiệu sản phẩm X, nhanh gọn, 3 điểm nổi bật, kết thúc bằng lời kêu gọi dùng thử."></textarea>
+    <textarea id="prompt" placeholder="Ví dụ: Giới thiệu sản phẩm X: nhanh gọn, 3 điểm nổi bật, kết thúc bằng lời kêu gọi dùng thử."></textarea>
+    <div class="grid2">
+      <div>
+        <label for="mins">Thời lượng (phút, 5–10)</label>
+        <input id="mins" type="number" min="5" max="10" step="0.5" value="5" />
+      </div>
+      <div>
+        <label for="palette">Bộ màu</label>
+        <select id="palette"></select>
+      </div>
+    </div>
     <div class="grid2">
       <div>
         <label for="title">Tiêu đề (tùy chọn)</label>
         <input id="title" placeholder="Video mới" />
       </div>
-      <div>
-        <label for="style">Phong cách</label>
-        <select id="style">
-          <option value="monochrome">Monochrome (mặc định)</option>
-          <option value="claude">Claude — giấy và mực ấm</option>
-          <option value="blockframe">Blockframe — pop-zine</option>
-          <option value="mat">Mat — chất liệu thủ công</option>
-          <option value="signal">Signal — bản tin biên tập</option>
-        </select>
-      </div>
+      <div></div>
     </div>
-    <p class="muted" style="margin-top:10px">Video do HyperFrames hosted render, tối đa khoảng 90 giây mỗi video. Tự động xuất MP4 sau khi xử lý xong.</p>
     <div class="row">
       <button class="primary" id="go" disabled>Tạo video</button>
-      <span class="muted" id="avail">Đang kiểm tra kết nối HyperFrames…</span>
+      <span class="muted" id="avail">Đang kiểm tra Claude…</span>
     </div>
     <div class="msg" id="msg"></div>
-    <div class="log" id="log" hidden></div>
   </div>
 
   <div class="card" id="resultCard" hidden>
-    <h2>2. Kết quả</h2>
-    <div id="result"></div>
-  </div>
-
-  <div class="card">
-    <h2>Giọng nói & âm thanh (sắp có)</h2>
-    <p class="muted">Chỗ này dành cho các AI giọng nói và âm thanh sẽ được thêm sau. Hiện chưa có provider nào.</p>
+    <h2>2. Gửi để render</h2>
+    <p class="muted">Kịch bản đã sẵn sàng. Bấm nút dưới để mở issue đã điền sẵn, rồi bấm <b>Submit new issue</b>. GitHub sẽ tự render và comment link MP4 vào issue.</p>
+    <div class="row">
+      <a class="btn primary" id="issueLink" target="_blank" rel="noopener">Mở issue để render</a>
+    </div>
+    <p class="muted" id="sizeNote"></p>
+    <details id="fallback" hidden>
+      <summary class="muted">Không mở được link? Sao chép nội dung thủ công</summary>
+      <pre id="issueText"></pre>
+    </details>
+    <p class="muted">Video dài có thể mất nhiều phút đến hàng chục phút để render. Đường dẫn MP4 sẽ có trong comment của issue.</p>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const SERVER = "HyperFrames by HeyGen";
-let mcp = null;
+const REPO = "anhnguyenit8-nadilac/video-studio";
+const MIN_SEC = 300, MAX_SEC = 600;
+const MIN_SCENE = 3, MAX_SCENE = 30;
+const URL_LIMIT = 7000; // ký tự tối đa an toàn cho URL issue/new
 
-function log(line) {
-  const el = $("log");
-  el.hidden = false;
-  el.textContent += (el.textContent ? "\n" : "") + line;
-  el.scrollTop = el.scrollHeight;
-}
+// Bộ màu lấy từ hình mẫu (mỗi bộ có bg, fg, accent)
+const PALETTES = [
+  { id: "aegean-sky", name: "Aegean Sky", bg: "#1664B0", fg: "#EFE8DE", accent: "#D21624" },
+  { id: "black-violet-lime", name: "Black Violet Lime", bg: "#000000", fg: "#C6FF34", accent: "#7F3AED" },
+  { id: "orange-green-white", name: "Orange Green White", bg: "#235451", fg: "#FDFBEF", accent: "#EC5D3D" },
+  { id: "color-combo-5", name: "Color Combo 5", bg: "#02C57A", fg: "#F8FE06", accent: "#F8FE06" },
+  { id: "color-combo-3", name: "Color Combo 3", bg: "#121909", fg: "#FEABEF", accent: "#FEABEF" },
+  { id: "marple", name: "Marple", bg: "#CA2851", fg: "#FFE3B3", accent: "#FFB173" },
+  { id: "violet-dusk", name: "Violet Dusk", bg: "#502D55", fg: "#F8F4E9", accent: "#F6DBC0" },
+  { id: "sunset", name: "Sunset", bg: "#EA6113", fg: "#FFE3B3", accent: "#FBB931" },
+  { id: "tokyo-night", name: "Tokyo Night", bg: "#130F40", fg: "#FF7EE3", accent: "#C724B1" },
+  { id: "blush", name: "Blush", bg: "#9D1242", fg: "#FFD08E", accent: "#FF7C4F" },
+];
+PALETTES.forEach(p => { const o = document.createElement("option"); o.value = p.id; o.textContent = p.name; $("palette").appendChild(o); });
 
-// Kết nối connector HyperFrames của người xem (chỉ có trong Artifact; trang tĩnh thì không có)
+// Claude (capability sample) - chỉ có khi mở trong Artifact
+let sampleFn = null;
 (async () => {
-  try { mcp = await window.claude?.use?.("mcp"); } catch (e) { mcp = null; }
-  if (mcp) {
-    $("go").disabled = false;
-    $("avail").textContent = "Đã kết nối HyperFrames.";
-  } else {
-    $("avail").textContent = "Chưa kết nối HyperFrames. Mở trang này trong Artifact để dùng tính năng tạo video.";
+  try {
+    const s = await window.claude?.use?.("sample");
+    if (s) { sampleFn = s; $("go").disabled = false; $("avail").textContent = "Đã kết nối Claude."; }
+    else $("avail").textContent = "Chưa kết nối Claude. Mở trang này trong Artifact để tạo video.";
+  } catch (e) {
+    $("avail").textContent = "Chưa kết nối Claude. Mở trang này trong Artifact để tạo video.";
   }
 })();
 
-async function callHF(tool, input) {
-  const srv = await mcp.server(SERVER);
-  const res = await srv[tool](input);
-  return res?.payload ?? res;
+function parseScenesJson(raw) {
+  const start = raw.indexOf("{"), end = raw.lastIndexOf("}");
+  if (start < 0 || end < 0) throw new Error("Claude không trả về JSON");
+  const data = JSON.parse(raw.slice(start, end + 1));
+  if (!Array.isArray(data.scenes) || !data.scenes.length) throw new Error("Thiếu danh sách scenes");
+  return data.scenes.map(x => ({
+    headline: String(x.headline ?? "").trim() || "Tiêu đề",
+    body: String(x.body ?? "").trim(),
+    seconds: Math.min(MAX_SCENE, Math.max(MIN_SCENE, Number(x.seconds) || MIN_SCENE)),
+  }));
 }
 
-function asText(v) {
-  return typeof v === "string" ? v : JSON.stringify(v);
+// Chia lại thời gian để tổng khớp T (đơn vị 0.1 giây, không sai số thập phân)
+function fitToTarget(list, T) {
+  const need = Math.ceil(T / MAX_SCENE);
+  const out = list.slice();
+  while (out.length < need) out.push({ headline: `Phần ${out.length + 1}`, body: "", seconds: MIN_SCENE });
+  const sum0 = out.reduce((a, s) => a + s.seconds, 0);
+  const secs = out.map(s => (s.seconds / sum0) * T);
+  for (let iter = 0; iter < 20; iter++) {
+    for (let i = 0; i < secs.length; i++) secs[i] = Math.min(MAX_SCENE, Math.max(MIN_SCENE, secs[i]));
+    const diff = T - secs.reduce((a, b) => a + b, 0);
+    if (Math.abs(diff) < 0.05) break;
+    const room = secs.map((v, i) => (diff > 0 ? v < MAX_SCENE : v > MIN_SCENE) ? i : -1).filter(i => i >= 0);
+    if (!room.length) break;
+    room.forEach(i => secs[i] += diff / room.length);
+  }
+  const minT = Math.round(MIN_SCENE * 10), maxT = Math.round(MAX_SCENE * 10);
+  const tenths = secs.map(v => Math.min(maxT, Math.max(minT, Math.floor(v * 10))));
+  let rem = Math.round(T * 10) - tenths.reduce((a, b) => a + b, 0);
+  for (let i = 0; rem > 0 && i < tenths.length * 400; i++) {
+    const k = i % tenths.length;
+    if (tenths[k] < maxT) { tenths[k]++; rem--; }
+  }
+  return out.map((s, i) => ({ ...s, seconds: tenths[i] / 10 }));
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function slugify(s) {
+  return (s || "video").toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d")
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "video";
+}
+
+function buildBrief(scenes, title, pal) {
+  const slug = slugify(title) + "-" + Date.now().toString(36).slice(-5);
+  return {
+    slug,
+    title: title || "Video mới",
+    width: 1080,
+    height: 1920,
+    fps: 30,
+    bg: pal.bg,
+    fg: pal.fg,
+    accent: pal.accent,
+    durationRange: { min: MIN_SEC, max: MAX_SEC },
+    font: {
+      family: "Be Vietnam Pro",
+      weights: {
+        400: "../../assets/fonts/be-vietnam-pro-vietnamese-400-normal.woff2",
+        700: "../../assets/fonts/be-vietnam-pro-vietnamese-700-normal.woff2",
+        800: "../../assets/fonts/be-vietnam-pro-vietnamese-800-normal.woff2",
+      },
+    },
+    scenes,
+  };
+}
 
 $("go").onclick = async () => {
   const text = $("prompt").value.trim();
-  if (!text || !mcp) return;
-  $("go").disabled = true;
-  $("msg").textContent = "";
-  $("log").textContent = "";
-  $("log").hidden = true;
-  $("resultCard").hidden = true;
-
+  if (!text || !sampleFn) return;
+  const T = Math.round(Math.min(10, Math.max(5, Number($("mins").value) || 5)) * 60);
+  const pal = PALETTES.find(p => p.id === $("palette").value) || PALETTES[0];
   const title = $("title").value.trim();
-  const style = $("style").value;
-  const prompt = [
-    title ? `Tiêu đề: ${title}` : "",
-    `Phong cách: ${style}`,
-    "Độ dài: khoảng 90 giây, tiếng Việt.",
-    "Yêu cầu nội dung:",
+
+  const ask = [
+    "Bạn là biên kịch video dọc (9:16) cho reel. Từ ý tưởng dưới đây, viết kịch bản gồm các scene.",
+    `Tổng thời lượng các scene phải xấp xỉ ${T} giây. Mỗi scene từ ${MIN_SCENE} đến ${MAX_SCENE} giây.`,
+    "Viết headline tối đa 8 từ, body tối đa 20 từ, bằng ngôn ngữ của ý tưởng gốc.",
+    'Chỉ trả về một JSON duy nhất, dạng: {"scenes":[{"headline":"...","body":"...","seconds":4}]}. Không thêm lời giải thích.',
+    "",
+    "Ý tưởng:",
     text,
-  ].filter(Boolean).join("\n");
+  ].join("\n");
 
+  $("go").disabled = true;
+  $("msg").textContent = "Claude đang viết kịch bản…";
+  $("resultCard").hidden = true;
   try {
-    log("Gửi yêu cầu tới HyperFrames…");
-    const started = asText(await callHF("compose", { prompt }));
-    const m = started.match(/project_id=([0-9a-f-]{36})/i) || started.match(/"project_id"\s*:\s*"([0-9a-f-]{36})"/i);
-    if (!m) throw new Error("Không đọc được mã dự án từ HyperFrames.");
-    const projectId = m[1];
-    log(`Dự án: ${projectId}`);
+    const res = await sampleFn(ask, { modelTier: "default", cache: false });
+    const scenes = fitToTarget(parseScenesJson(res.text), T);
+    const brief = buildBrief(scenes, title, pal);
+    const body = "```json\n" + JSON.stringify(brief, null, 2) + "\n```";
+    const url = `https://github.com/${REPO}/issues/new?labels=render&title=${encodeURIComponent("render: " + brief.slug)}&body=${encodeURIComponent(body)}`;
 
-    // Chờ đến khi AI hoàn tất (compose tự render MP4)
-    let done = false;
-    for (let i = 0; i < 60 && !done; i++) {
-      await sleep(15000);
-      const st = asText(await callHF("get_project_status", { projectId }));
-      const s = (st.match(/session_status[=:"\s]+(\w+)/i) || [])[1] || "";
-      log(`Trạng thái: ${s || "đang kiểm tra"}`);
-      if (/^(failed|error|deleted)$/i.test(s)) throw new Error("Dự án gặp lỗi trên HyperFrames.");
-      if (/^(completed|draft)$/i.test(s)) done = true;
-    }
-    if (!done) throw new Error("Quá thời gian chờ. Hãy thử lại sau.");
-
-    const project = await callHF("get_project", { projectId });
-    const url = asText(project).match(/https?:\/\/[^\s"']+\.mp4[^\s"']*/i)?.[0];
-    $("result").innerHTML = `
-      <p>Video đã xong.</p>
-      ${url ? `<p><a href="${esc(url)}" target="_blank" rel="noopener">Tải MP4</a></p>` : ""}
-      <p><a href="https://hyperframes.dev/mcp-sessions/${esc(projectId)}" target="_blank" rel="noopener">Xem dự án trên HyperFrames</a></p>
-      <p class="muted">Mã dự án: ${esc(projectId)}</p>`;
     $("resultCard").hidden = false;
+    if (url.length <= URL_LIMIT) {
+      $("issueLink").href = url;
+      $("issueLink").hidden = false;
+      $("sizeNote").textContent = `${scenes.length} scene · ${(T / 60).toFixed(1)} phút · mã: ${brief.slug}`;
+      $("fallback").hidden = true;
+    } else {
+      // Kịch bản quá dài cho URL: người dùng sao chép nội dung và dán vào issue mới
+      $("issueLink").hidden = true;
+      $("sizeNote").textContent = "Kịch bản dài, cần sao chép thủ công.";
+      $("issueText").textContent = body;
+      $("fallback").hidden = false;
+      $("fallback").open = true;
+    }
+    $("msg").textContent = "";
   } catch (e) {
-    if (e?.code === "not_granted") $("msg").textContent = "Chưa được cấp quyền kết nối HyperFrames.";
-    else if (e?.code === "rate_limited") $("msg").textContent = "Quá nhiều yêu cầu. Thử lại sau ít phút.";
-    else $("msg").textContent = e?.message ?? "Có lỗi xảy ra.";
+    if (e?.code === "not_granted") { sampleFn = null; $("go").disabled = true; $("msg").textContent = "Chưa được cấp quyền dùng Claude."; }
+    else if (e?.code === "rate_limited") $("msg").textContent = "Đang quá giới hạn yêu cầu. Thử lại sau ít phút.";
+    else $("msg").textContent = "Không tạo được kịch bản: " + (e?.message ?? e);
   } finally {
-    $("go").disabled = !mcp;
+    $("go").disabled = !sampleFn;
   }
 };
 </script>
